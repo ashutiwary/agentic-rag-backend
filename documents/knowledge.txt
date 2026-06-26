@@ -1,0 +1,19 @@
+Python is a high-level, interpreted programming language created by Guido van Rossum in 1991.
+It emphasizes code readability and simplicity, making it ideal for beginners and experts alike.
+Python supports multiple programming paradigms including procedural, object-oriented, and functional programming.
+
+Python is widely used in web development with frameworks like Django and Flask.
+Data science and machine learning are major use cases for Python with libraries like NumPy, Pandas, and scikit-learn.
+Artificial intelligence research heavily relies on Python with tools like TensorFlow and PyTorch.
+
+ChromaDB is an open-source vector database designed for AI applications.
+It allows storing, indexing, and querying embeddings efficiently.
+ChromaDB can run locally without any server setup, making it perfect for development.
+
+RAG stands for Retrieval Augmented Generation.
+It combines a retrieval system with a language model to answer questions from custom documents.
+RAG reduces hallucination by grounding the LLM's answers in retrieved factual content.
+
+Large language models are trained on massive datasets of text from the internet.
+They learn to predict the next token given previous tokens.
+Popular LLMs include GPT-4, Claude, and LLaMA.
