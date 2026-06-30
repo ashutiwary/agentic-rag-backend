@@ -16,11 +16,12 @@ async def list_documents():
     registry  = load_registry()
     documents = [
         {
-            "filename": meta["filename"],
+            "filename": meta["name"],
             "chunks"  : meta["chunks"],
-            "mtime"   : meta["mtime"],
+            "mtime"   : meta.get("version"),
         }
         for meta in registry.values()
+        if meta.get("kind") == "local"
     ]
     documents.sort(key=lambda d: d["filename"])
     return {"total": len(documents), "documents": documents}

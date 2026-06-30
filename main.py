@@ -86,6 +86,27 @@ def run_index() -> None:
     )
 
 
+def run_sync() -> None:
+    """Pull documents from every source configured in sources.json."""
+    from app.sync import sync_all
+
+    summary = sync_all()
+    for source in summary["sources"]:
+        if "error" in source:
+            print(f"  {source['spec']}: ERROR {source['error']}")
+        else:
+            print(
+                f"  {source['kind']}: "
+                f"indexed={source['indexed']} "
+                f"skipped={source['skipped']} "
+                f"failed={source['failed']}"
+            )
+    print(
+        f"Sync complete. removed={summary['removed']} "
+        f"total_chunks={summary['total_chunks']}"
+    )
+
+
 def run_server() -> None:
     """Start the FastAPI server with uvicorn."""
     import uvicorn
@@ -102,6 +123,8 @@ def run_server() -> None:
 if __name__ == "__main__":
     if "--index" in sys.argv:
         run_index()
+    elif "--sync" in sys.argv:
+        run_sync()
     elif "--server" in sys.argv:
         run_server()
     else:

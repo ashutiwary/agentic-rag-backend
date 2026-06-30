@@ -18,6 +18,7 @@ DOCUMENTS_DIR = os.path.join(BASE_DIR, "documents")
 DATA_DIR      = os.path.join(BASE_DIR, "data")
 CHROMA_DIR    = os.path.join(DATA_DIR, "chroma_db")
 REGISTRY_FILE = os.path.join(DATA_DIR, "indexed_files.json")
+SOURCES_FILE  = os.path.join(BASE_DIR, "sources.json")
 
 # --- Embedding ------------------------------------------------------------
 EMBED_MODEL     = "all-MiniLM-L6-v2"

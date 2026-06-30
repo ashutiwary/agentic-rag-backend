@@ -1,0 +1,4 @@
+[
+  { "type": "arxiv", "query": "cat:cs.AI", "max_results": 5 },
+  { "type": "jsonplaceholder", "limit": 10 }
+]

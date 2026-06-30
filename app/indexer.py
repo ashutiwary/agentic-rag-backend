@@ -13,9 +13,15 @@ logger = logging.getLogger(__name__)
 
 
 # --- Registry helpers -----------------------------------------------------
+#
+# The registry maps a stable source_id to what we last indexed for it:
+#   { source_id, kind, name, version, chunks }
+# kind is "local" for files in the documents folder, or a connector name
+# (e.g. "arxiv") for external sources. version is whatever token tells us
+# the content changed: a file mtime, a remote timestamp, or a content hash.
 
 def load_registry() -> dict:
-    """Load the file index registry from disk."""
+    """Load the index registry from disk."""
     if os.path.exists(REGISTRY_FILE):
         with open(REGISTRY_FILE, "r") as f:
             return json.load(f)
@@ -23,64 +29,75 @@ def load_registry() -> dict:
 
 
 def save_registry(registry: dict) -> None:
-    """Persist the file index registry to disk."""
+    """Persist the index registry to disk."""
     with open(REGISTRY_FILE, "w") as f:
         json.dump(registry, f, indent=2)
 
 
 def is_already_indexed(filepath: str, registry: dict) -> bool:
     """
-    Return True if the file exists in the registry and its
-    last-modified time has not changed since it was indexed.
+    Return True if a local file is in the registry and its last-modified
+    time has not changed since it was indexed.
     """
-    if filepath not in registry:
+    entry = registry.get(filepath)
+    if not entry:
         return False
-    return registry[filepath]["mtime"] == os.path.getmtime(filepath)
+    return entry.get("version") == os.path.getmtime(filepath)
 
 
 # --- Core indexing --------------------------------------------------------
 
-def index_document(filepath: str) -> int:
+def index_text(
+    source_id: str,
+    name: str,
+    text: str,
+    version,
+    kind: str = "local",
+) -> int:
     """
-    Load, chunk, embed, and store a single document.
+    Chunk, embed, and store arbitrary text under a stable source id.
+
+    This is the single indexing path shared by local files and external
+    connectors. Any existing chunks for the same source_id are removed
+    first, so re-indexing a changed document replaces stale content
+    instead of duplicating it.
 
     Args:
-        filepath: Absolute path to the document.
+        source_id: Stable unique id for the document (e.g. a filepath or
+                   "arxiv:2401.01234").
+        name:      Human-readable display name shown as the answer source.
+        text:      Extracted document text.
+        version:   Change token (mtime, remote timestamp, or content hash).
+        kind:      Source category ("local" or a connector name).
 
     Returns:
-        Number of chunks indexed. Returns 0 if document is empty.
-
-    Raises:
-        Exception: Propagates any loader or ChromaDB errors to the caller.
+        Number of chunks indexed. 0 if the document is empty.
     """
     collection = get_collection()
-    filename   = os.path.basename(filepath)
 
-    logger.info("Indexing: %s", filename)
-
-    text   = load_document(filepath)
-    chunks = chunk_document(text)
-
-    if not chunks:
-        logger.warning("No content extracted from %s", filename)
-        return 0
-
-    # Remove any existing chunks for this file first, so re-indexing a
-    # modified document replaces stale content instead of being skipped
-    # by ChromaDB's duplicate-ID handling.
-    existing = collection.get(where={"source": filename})
+    # Replace any existing chunks for this source.
+    existing = collection.get(where={"source_id": source_id})
     if existing["ids"]:
         collection.delete(ids=existing["ids"])
 
-    # Embed in batches to avoid memory spikes on large documents
+    chunks = chunk_document(text)
+
+    if not chunks:
+        logger.warning("No content extracted from %s", name)
+        registry = load_registry()
+        registry.pop(source_id, None)
+        save_registry(registry)
+        return 0
+
+    # Embed in batches to avoid memory spikes on large documents.
     all_embeddings: list[list[float]] = []
     for i in range(0, len(chunks), config.BATCH_SIZE):
         batch = chunks[i: i + config.BATCH_SIZE]
         all_embeddings.extend(embed(batch))
 
-    ids       = [f"{filename}_chunk_{i}" for i in range(len(chunks))]
+    ids       = [f"{source_id}::chunk::{i}" for i in range(len(chunks))]
     metadatas = [
-        {"source": filename, "filepath": filepath}
+        {"source": name, "source_id": source_id, "kind": kind}
         for _ in chunks
     ]
 
@@ -91,56 +108,66 @@ def index_document(filepath: str) -> int:
         metadatas=metadatas,
     )
 
-    # Record the document in the registry so uploads/single indexes show up
-    # in listings and status checks (not just folder scans).
     registry = load_registry()
-    registry[filepath] = {
-        "mtime"   : os.path.getmtime(filepath),
-        "chunks"  : len(chunks),
-        "filename": filename,
+    registry[source_id] = {
+        "source_id": source_id,
+        "kind"     : kind,
+        "name"     : name,
+        "version"  : version,
+        "chunks"   : len(chunks),
     }
     save_registry(registry)
 
-    logger.info("Indexed %d chunks from %s", len(chunks), filename)
+    logger.info("Indexed %d chunks from %s", len(chunks), name)
     return len(chunks)
 
 
-def delete_document(filename: str) -> int:
+def index_document(filepath: str) -> int:
     """
-    Remove all chunks for a document from ChromaDB and the registry.
-
-    Args:
-        filename: Base filename (not full path).
-
-    Returns:
-        Number of chunks deleted.
+    Load and index a single local file. Thin wrapper over index_text that
+    reads the file and uses its path as the source id and mtime as version.
     """
+    filename = os.path.basename(filepath)
+    logger.info("Indexing: %s", filename)
+
+    text = load_document(filepath)
+    return index_text(
+        source_id=filepath,
+        name=filename,
+        text=text,
+        version=os.path.getmtime(filepath),
+        kind="local",
+    )
+
+
+def delete_by_source_id(source_id: str) -> int:
+    """Remove all chunks for a source id from ChromaDB and the registry."""
     collection = get_collection()
 
-    results = collection.get(where={"source": filename})
+    results = collection.get(where={"source_id": source_id})
     ids     = results["ids"]
-
     if ids:
         collection.delete(ids=ids)
 
     registry = load_registry()
-    registry = {
-        k: v for k, v in registry.items()
-        if v.get("filename") != filename
-    }
-    save_registry(registry)
+    if source_id in registry:
+        del registry[source_id]
+        save_registry(registry)
 
-    logger.info("Deleted %d chunks for %s", len(ids), filename)
+    logger.info("Deleted %d chunks for %s", len(ids), source_id)
     return len(ids)
+
+
+def delete_document(filename: str) -> int:
+    """Delete a local document's chunks by filename (API convenience)."""
+    source_id = os.path.join(DOCUMENTS_DIR, filename)
+    return delete_by_source_id(source_id)
 
 
 def index_folder(folder_path: str = DOCUMENTS_DIR) -> dict:
     """
     Scan a folder and index all new or modified documents.
-    Unchanged files (matched by mtime in registry) are skipped.
-
-    Args:
-        folder_path: Directory to scan. Defaults to DOCUMENTS_DIR.
+    Unchanged files (matched by mtime in the registry) are skipped.
 
     Returns:
         Summary dict with keys: indexed, skipped, failed, total_chunks.
@@ -165,7 +192,6 @@ def index_folder(folder_path: str = DOCUMENTS_DIR) -> dict:
             continue
 
         try:
-            # index_document persists its own registry entry.
             count = index_document(filepath)
             indexed += count
         except Exception as exc:

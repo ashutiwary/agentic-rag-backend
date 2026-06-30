@@ -3,6 +3,7 @@ import logging
 from fastapi    import APIRouter, HTTPException
 from pydantic   import BaseModel, Field
 from app.indexer  import index_folder
+from app.sync      import sync_all
 from app.retriever import get_stats
 from app.config    import DOCUMENTS_DIR
 import app.config as _config
@@ -49,6 +50,18 @@ async def reindex():
         logger.error("Reindex failed: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc))
     logger.info("Reindex complete: %s", summary)
+    return {"status": "complete", "summary": summary}
+
+
+@router.post("/sync")
+async def sync():
+    """Pull from every source in sources.json, indexing only what changed."""
+    try:
+        summary = sync_all()
+    except Exception as exc:
+        logger.error("Sync failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+    logger.info("Sync complete: %s", summary)
     return {"status": "complete", "summary": summary}
 
 
