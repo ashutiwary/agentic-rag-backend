@@ -5,7 +5,7 @@ import logging
 import app.config as config
 from app.config import REGISTRY_FILE, DOCUMENTS_DIR
 from app.loader    import load_document, SUPPORTED_FORMATS
-from app.chunker   import chunk_text
+from app.chunker   import chunk_document
 from app.retriever import get_collection, get_stats
 from app.embedder  import embed
 
@@ -59,7 +59,7 @@ def index_document(filepath: str) -> int:
     logger.info("Indexing: %s", filename)
 
     text   = load_document(filepath)
-    chunks = chunk_text(text, chunk_size=config.CHUNK_SIZE, overlap=config.OVERLAP)
+    chunks = chunk_document(text)
 
     if not chunks:
         logger.warning("No content extracted from %s", filename)

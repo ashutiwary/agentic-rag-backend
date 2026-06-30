@@ -24,8 +24,19 @@ EMBED_MODEL     = "all-MiniLM-L6-v2"
 COLLECTION_NAME = "knowledge_base"
 
 # --- Chunking -------------------------------------------------------------
+# "semantic" splits on meaning boundaries; "fixed" uses fixed-size windows.
+CHUNK_STRATEGY = "semantic"
+
+# Fixed strategy
 CHUNK_SIZE = 500
 OVERLAP    = 100
+
+# Semantic strategy
+# Break where adjacent-sentence distance is in the top (100 - percentile)%.
+# Higher percentile = fewer, larger chunks. MAX_CHUNK_SIZE is a hard cap.
+SEMANTIC_BREAKPOINT_PERCENTILE = 95
+MAX_CHUNK_SIZE                 = 1000
+
 BATCH_SIZE = 100
 
 # --- Retrieval ------------------------------------------------------------
